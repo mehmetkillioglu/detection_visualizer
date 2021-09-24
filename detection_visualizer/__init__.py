@@ -57,9 +57,9 @@ class DetectionVisualizerNode(Node):
             max_class = None
             max_score = 0.0
             for hypothesis in detection.results:
-                if hypothesis.score > max_score:
-                    max_score = hypothesis.score
-                    max_class = hypothesis.id
+                if hypothesis.hypothesis.score > max_score:
+                    max_score = hypothesis.hypothesis.score
+                    max_class = hypothesis.hypothesis.class_id
             if max_class is None:
                 print("Failed to find class with highest score", file=sys.stderr)
                 return
