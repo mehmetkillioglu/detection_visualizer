@@ -42,14 +42,55 @@ class DetectionVisualizerNode(Node):
 
         self._image_pub = self.create_publisher(Image, '~/dbg_images', output_image_qos)
 
-        self._image_sub = message_filters.Subscriber(self, Image, '~/images')
-        self._detections_sub = message_filters.Subscriber(self, Detection2DArray, '~/detections')
+        self._image_sub = self.create_subscription(Image, '~/images', self.on_camera, 10)
+        self._detections_sub = self.create_subscription(Detection2DArray, '~/detections', self.on_detection, 10)
 
-        self._synchronizer = message_filters.ApproximateTimeSynchronizer(
-            (self._image_sub, self._detections_sub), 5, 0.01)
-        self._synchronizer.registerCallback(self.on_detections)
+        self._detection = Detection2DArray()
+        print("Subscribed to detections")
 
+    def on_camera(self, image_msg):
+        print("Received image")
+        cv_image = self._bridge.imgmsg_to_cv2(image_msg)
+        
+        print("Have {} detections".format(len(self._detection.detections)))
+        # Draw boxes on image
+        for detection in self._detection.detections:
+            max_class = None
+            max_score = 0.0
+            for hypothesis in detection.results:
+                if hypothesis.hypothesis.score > max_score:
+                    max_score = hypothesis.hypothesis.score
+                    max_class = hypothesis.hypothesis.class_id
+            if max_class is None:
+                print("Failed to find class with highest score", file=sys.stderr)
+                return
+
+            cx = detection.bbox.center.x
+            cy = detection.bbox.center.y
+            sx = detection.bbox.size_x
+            sy = detection.bbox.size_y
+
+            min_pt = (round(cx - sx / 2.0), round(cy - sy / 2.0))
+            max_pt = (round(cx + sx / 2.0), round(cy + sy / 2.0))
+            color = (0, 255, 0)
+            thickness = 1
+            cv2.rectangle(cv_image, min_pt, max_pt, color, thickness)
+
+            label = '{} {} {:.3f}'.format(detection.id, max_class, max_score)
+            pos = (min_pt[0], max_pt[1])
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            cv2.putText(cv_image, label, pos, font, 0.75, color, 1, cv2.LINE_AA)
+            
+        detection_image_msg = self._bridge.cv2_to_imgmsg(cv_image, encoding="bgr8")
+        detection_image_msg.header = image_msg.header
+
+        self._image_pub.publish(detection_image_msg)
+        
+    def on_detection(self, detections_msg):
+        self._detection = detections_msg
+        
     def on_detections(self, image_msg, detections_msg):
+        print("Received detections")
         cv_image = self._bridge.imgmsg_to_cv2(image_msg)
 
         # Draw boxes on image
